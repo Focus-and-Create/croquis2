@@ -13,7 +13,7 @@ interface FolderCardProps {
 export function FolderCard({ folder, onDelete }: FolderCardProps) {
   return (
     <div className="group relative overflow-hidden rounded-xl border bg-card transition-colors hover:border-primary/50">
-      <Link href={`/folders/${folder.id}`} className="block p-5">
+      <Link href={`/folders?id=${folder.id}`} className="block p-5">
         <div className="mb-3 flex h-24 items-center justify-center rounded-lg bg-secondary">
           {folder.thumbnail_url ? (
             <img

@@ -1,25 +1,21 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { AuthGuard } from "@/components/auth-guard";
 import { Navbar } from "@/components/navbar";
 
-export const dynamic = "force-dynamic";
-
-export default async function AppLayout({
+export default function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar userEmail={user.email || ""} />
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-    </div>
+    <AuthGuard>
+      {(userEmail) => (
+        <div className="min-h-screen bg-background">
+          <Navbar userEmail={userEmail} />
+          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+        </div>
+      )}
+    </AuthGuard>
   );
 }
