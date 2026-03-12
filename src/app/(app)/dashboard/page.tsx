@@ -2,11 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { FolderCard } from "@/components/folders/folder-card";
 import { CreateFolderModal } from "@/components/folders/create-folder-modal";
+import {
+  getFolders,
+  getImageCountByFolder,
+  getFolderThumbnail,
+  deleteFolder,
+} from "@/lib/storage";
 import type { Folder } from "@/lib/types";
 import { FolderPlus, Play } from "lucide-react";
 
@@ -14,54 +19,19 @@ export default function DashboardPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const supabase = createClient();
 
   const fetchFolders = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data: foldersData } = await supabase
-      .from("folders")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
-    if (foldersData) {
-      // Get image counts for each folder
-      const foldersWithCounts = await Promise.all(
-        foldersData.map(async (folder) => {
-          const { count } = await supabase
-            .from("images")
-            .select("*", { count: "exact", head: true })
-            .eq("folder_id", folder.id);
-
-          // Get first image as thumbnail
-          const { data: firstImage } = await supabase
-            .from("images")
-            .select("storage_path")
-            .eq("folder_id", folder.id)
-            .limit(1)
-            .single();
-
-          let thumbnail_url: string | undefined;
-          if (firstImage) {
-            const { data: urlData } = await supabase.storage
-              .from("reference-images")
-              .createSignedUrl(firstImage.storage_path, 3600);
-            thumbnail_url = urlData?.signedUrl;
-          }
-
-          return {
-            ...folder,
-            image_count: count ?? 0,
-            thumbnail_url,
-          };
-        })
-      );
-      setFolders(foldersWithCounts);
-    }
+    const raw = getFolders();
+    const withCounts = await Promise.all(
+      raw.map(async (folder) => {
+        const image_count = getImageCountByFolder(folder.id);
+        const thumbnail_url = await getFolderThumbnail(folder.id);
+        return { ...folder, image_count, thumbnail_url };
+      })
+    );
+    setFolders(withCounts);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchFolders();
@@ -69,24 +39,7 @@ export default function DashboardPage() {
 
   const handleDeleteFolder = async (folderId: string) => {
     if (!confirm("이 폴더와 모든 이미지를 삭제하시겠습니까?")) return;
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    // Delete all images in storage for this folder
-    const { data: images } = await supabase
-      .from("images")
-      .select("storage_path")
-      .eq("folder_id", folderId);
-
-    if (images && images.length > 0) {
-      await supabase.storage
-        .from("reference-images")
-        .remove(images.map((img) => img.storage_path));
-    }
-
-    // Delete folder (cascade deletes image records)
-    await supabase.from("folders").delete().eq("id", folderId);
+    await deleteFolder(folderId);
     setFolders((prev) => prev.filter((f) => f.id !== folderId));
   };
 

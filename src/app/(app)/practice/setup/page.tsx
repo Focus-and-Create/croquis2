@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { getFolders, getImageCountByFolder } from "@/lib/storage";
 import { useSessionStore } from "@/stores/session-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,6 @@ const COUNT_PRESETS = [5, 10, 15, 20];
 
 export default function PracticeSetupPage() {
   const router = useRouter();
-  const supabase = createClient();
   const setConfig = useSessionStore((s) => s.setConfig);
 
   const [folders, setFolders] = useState<(Folder & { image_count: number })[]>([]);
@@ -43,30 +42,15 @@ export default function PracticeSetupPage() {
     .filter((f) => selectedFolderIds.includes(f.id))
     .reduce((sum, f) => sum + f.image_count, 0);
 
-  const fetchFolders = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data: foldersData } = await supabase
-      .from("folders")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("name");
-
-    if (foldersData) {
-      const withCounts = await Promise.all(
-        foldersData.map(async (folder) => {
-          const { count } = await supabase
-            .from("images")
-            .select("*", { count: "exact", head: true })
-            .eq("folder_id", folder.id);
-          return { ...folder, image_count: count ?? 0 };
-        })
-      );
-      setFolders(withCounts.filter((f) => f.image_count > 0));
-    }
+  const fetchFolders = useCallback(() => {
+    const raw = getFolders();
+    const withCounts = raw.map((folder) => ({
+      ...folder,
+      image_count: getImageCountByFolder(folder.id),
+    }));
+    setFolders(withCounts.filter((f) => f.image_count > 0));
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchFolders();
@@ -124,14 +108,12 @@ export default function PracticeSetupPage() {
         <h1 className="text-2xl font-bold text-foreground">연습 설정</h1>
       </div>
 
-      {/* Folder Selection */}
       <FolderPicker
         folders={folders}
         selectedIds={selectedFolderIds}
         onToggle={handleToggleFolder}
       />
 
-      {/* Timer Selection */}
       <div className="space-y-3">
         <label className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Timer className="h-4 w-4" />
@@ -182,7 +164,6 @@ export default function PracticeSetupPage() {
         )}
       </div>
 
-      {/* Round Count Selection */}
       <div className="space-y-3">
         <label className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Hash className="h-4 w-4" />
@@ -256,7 +237,6 @@ export default function PracticeSetupPage() {
         )}
       </div>
 
-      {/* Start Button */}
       <Button
         onClick={handleStart}
         disabled={!canStart}
