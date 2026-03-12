@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { saveImage } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { Upload, X } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,7 +17,6 @@ export function UploadDropzone({ folderId, onUploaded }: UploadDropzoneProps) {
   const [uploadCount, setUploadCount] = useState({ done: 0, total: 0 });
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const supabase = createClient();
 
   const uploadFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -40,41 +39,15 @@ export function UploadDropzone({ folderId, onUploaded }: UploadDropzoneProps) {
       setUploading(true);
       setUploadCount({ done: 0, total: imageFiles.length });
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError("로그인이 필요합니다");
-        setUploading(false);
-        return;
-      }
-
       for (const file of imageFiles) {
-        const ext = file.name.split(".").pop() || "jpg";
-        const uuid = crypto.randomUUID();
-        const storagePath = `${user.id}/${folderId}/${uuid}.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("reference-images")
-          .upload(storagePath, file);
-
-        if (uploadError) {
-          setError(`업로드 실패: ${file.name}`);
-          continue;
-        }
-
-        await supabase.from("images").insert({
-          user_id: user.id,
-          folder_id: folderId,
-          file_name: file.name,
-          storage_path: storagePath,
-        });
-
+        await saveImage(folderId, file);
         setUploadCount((prev) => ({ ...prev, done: prev.done + 1 }));
       }
 
       setUploading(false);
       onUploaded();
     },
-    [folderId, supabase, onUploaded]
+    [folderId, onUploaded]
   );
 
   const handleDrop = useCallback(

@@ -2,11 +2,17 @@
 
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { UploadDropzone } from "@/components/images/upload-dropzone";
 import { ImageGrid } from "@/components/images/image-grid";
+import {
+  getFolder,
+  getImagesByFolder,
+  getImageUrl,
+  deleteImage,
+  renameFolder,
+} from "@/lib/storage";
 import type { Folder, ImageRecord } from "@/lib/types";
 import { ArrowLeft, ImageIcon, Pencil, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -15,7 +21,6 @@ function FolderDetailContent() {
   const searchParams = useSearchParams();
   const folderId = searchParams.get("id") || "";
   const router = useRouter();
-  const supabase = createClient();
 
   const [folder, setFolder] = useState<Folder | null>(null);
   const [images, setImages] = useState<(ImageRecord & { url: string })[]>([]);
@@ -29,38 +34,23 @@ function FolderDetailContent() {
       return;
     }
 
-    const { data: folderData } = await supabase
-      .from("folders")
-      .select("*")
-      .eq("id", folderId)
-      .single();
-
+    const folderData = getFolder(folderId);
     if (!folderData) {
       router.push("/dashboard");
       return;
     }
     setFolder(folderData);
 
-    const { data: imagesData } = await supabase
-      .from("images")
-      .select("*")
-      .eq("folder_id", folderId)
-      .order("created_at", { ascending: false });
-
-    if (imagesData) {
-      const imagesWithUrls = await Promise.all(
-        imagesData.map(async (img) => {
-          const { data } = await supabase.storage
-            .from("reference-images")
-            .createSignedUrl(img.storage_path, 3600);
-          return { ...img, url: data?.signedUrl || "" };
-        })
-      );
-      setImages(imagesWithUrls);
-    }
-
+    const imagesData = getImagesByFolder(folderId);
+    const imagesWithUrls = await Promise.all(
+      imagesData.map(async (img) => {
+        const url = await getImageUrl(img.id);
+        return { ...img, url };
+      })
+    );
+    setImages(imagesWithUrls);
     setLoading(false);
-  }, [folderId, supabase, router]);
+  }, [folderId, router]);
 
   useEffect(() => {
     fetchData();
@@ -68,23 +58,13 @@ function FolderDetailContent() {
 
   const handleDeleteImage = async (image: ImageRecord) => {
     if (!confirm("이 이미지를 삭제하시겠습니까?")) return;
-
-    await supabase.storage
-      .from("reference-images")
-      .remove([image.storage_path]);
-    await supabase.from("images").delete().eq("id", image.id);
-
+    await deleteImage(image.id);
     setImages((prev) => prev.filter((img) => img.id !== image.id));
   };
 
-  const handleRename = async () => {
+  const handleRename = () => {
     if (!editName.trim() || !folder) return;
-
-    await supabase
-      .from("folders")
-      .update({ name: editName.trim() })
-      .eq("id", folder.id);
-
+    renameFolder(folder.id, editName.trim());
     setFolder({ ...folder, name: editName.trim() });
     setEditing(false);
   };

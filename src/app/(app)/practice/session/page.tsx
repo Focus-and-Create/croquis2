@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { getImagesByFolder, getImageUrl } from "@/lib/storage";
 import { useSessionStore } from "@/stores/session-store";
 import { TimerDisplay } from "@/components/practice/timer-display";
 import { SessionControls } from "@/components/practice/session-controls";
@@ -13,7 +13,6 @@ import type { ImageRecord } from "@/lib/types";
 
 export default function PracticeSessionPage() {
   const router = useRouter();
-  const supabase = createClient();
 
   const config = useSessionStore((s) => s.config);
   const images = useSessionStore((s) => s.images);
@@ -42,21 +41,10 @@ export default function PracticeSessionPage() {
       const allImages: (ImageRecord & { url: string })[] = [];
 
       for (const folderId of config.folderIds) {
-        const { data: imagesData } = await supabase
-          .from("images")
-          .select("*")
-          .eq("folder_id", folderId);
-
-        if (imagesData) {
-          for (const img of imagesData) {
-            const { data: urlData } = await supabase.storage
-              .from("reference-images")
-              .createSignedUrl(img.storage_path, 7200);
-            allImages.push({
-              ...img,
-              url: urlData?.signedUrl || "",
-            });
-          }
+        const imagesData = getImagesByFolder(folderId);
+        for (const img of imagesData) {
+          const url = await getImageUrl(img.id);
+          allImages.push({ ...img, url });
         }
       }
 
@@ -72,7 +60,7 @@ export default function PracticeSessionPage() {
     };
 
     fetchImages();
-  }, [config, supabase, router, setImages]);
+  }, [config, router, setImages]);
 
   // Timer interval
   useEffect(() => {
