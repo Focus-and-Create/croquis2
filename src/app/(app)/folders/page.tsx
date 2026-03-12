@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,8 +11,9 @@ import type { Folder, ImageRecord } from "@/lib/types";
 import { ArrowLeft, ImageIcon, Pencil, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-export default function FolderDetailPage() {
-  const { folderId } = useParams<{ folderId: string }>();
+function FolderDetailContent() {
+  const searchParams = useSearchParams();
+  const folderId = searchParams.get("id") || "";
   const router = useRouter();
   const supabase = createClient();
 
@@ -23,7 +24,11 @@ export default function FolderDetailPage() {
   const [editName, setEditName] = useState("");
 
   const fetchData = useCallback(async () => {
-    // Fetch folder
+    if (!folderId) {
+      router.push("/dashboard");
+      return;
+    }
+
     const { data: folderData } = await supabase
       .from("folders")
       .select("*")
@@ -36,7 +41,6 @@ export default function FolderDetailPage() {
     }
     setFolder(folderData);
 
-    // Fetch images
     const { data: imagesData } = await supabase
       .from("images")
       .select("*")
@@ -156,5 +160,19 @@ export default function FolderDetailPage() {
         <ImageGrid images={images} onDelete={handleDeleteImage} />
       )}
     </div>
+  );
+}
+
+export default function FolderDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Spinner size={32} />
+        </div>
+      }
+    >
+      <FolderDetailContent />
+    </Suspense>
   );
 }
